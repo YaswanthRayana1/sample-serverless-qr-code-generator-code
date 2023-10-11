@@ -17,6 +17,7 @@ const jwtMiddleware = (req, res, next) => {
         
         // Append decrypted JWT to req.body
         req.body.jwtContent = decoded;
+        console,log(req.body.jwtContent)
         
         next();  // Continue to the next middleware or route handler
     } catch (error) {

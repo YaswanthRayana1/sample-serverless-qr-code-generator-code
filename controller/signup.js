@@ -11,22 +11,21 @@ const signUpHandeler= async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Store data in DynamoDB
     const params = {
         TableName: 'Users',  
         Item: {
-            email: email,
-            username: username,
-            password: hashedPassword
+            email: { S: email },
+            username: { S: username },
+            password: { S: hashedPassword }
         },
-        ConditionExpression: 'attribute_not_exists(email)'  // This ensures the email doesn't already exist in the table
+        ConditionExpression: 'attribute_not_exists(email)'
     };
-
+    console.log(params)
     try {
         const putCommand = new PutItemCommand(params); 
         await dynamoDb.send(putCommand);
         // Create a JWT
-        const token = jwt.sign({ email: sanitizedEmail }, process.env.SECRET_KEY, {
+        const token = jwt.sign({ email: email }, process.env.SECRET_KEY, {
             expiresIn: '1h'  // Token expires in 1 hour
         });
 
