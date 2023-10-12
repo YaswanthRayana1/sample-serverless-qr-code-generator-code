@@ -1,10 +1,13 @@
+//package imports
 const bcrypt = require('bcryptjs');
-const dynamoDb = require("../dbClient.js");
-const { GetItemCommand , PutItemCommand} = require("@aws-sdk/client-dynamodb");
 const QRCode = require("qrcode")
+const { GetItemCommand, PutItemCommand } = require("@aws-sdk/client-dynamodb");
 const { GetObjectCommand, PutObjectCommand, GetSignedUrlCommand } = require("@aws-sdk/client-s3");
 const { Readable } = require('stream');
-const s3Client = require("../s3Client.js")
+const { SendRawEmailCommand } = require('@aws-sdk/client-ses');
+
+//file imports 
+const {dynamoDb,s3Client,sesClient} = require("../awsClients.js")
 
 
 // generate QR code
@@ -45,8 +48,8 @@ const uploadToS3AndGetSignedUrl = async (dataBuffer, filename) => {
     const dynamoParams = {
         TableName: "Product",
         Item: {
-            "email": { S: email },  
-            "url": { S: url }, 
+            "email": { S: email },
+            "url": { S: url },
             "signedUrl": { S: signedUrl }
         }
     };
@@ -55,7 +58,46 @@ const uploadToS3AndGetSignedUrl = async (dataBuffer, filename) => {
 
     return await s3Client.send(new GetSignedUrlCommand(urlParams));
 };
+const verifyAndSendEmail = async (givenEmail, imagebuffer, signedUrl) => {
+    const email = givenEmail;
+    const imageBuffer = imagebuffer;
 
+    // Compose the raw email with the image attachment
+    const rawEmail = `From: ${process.env.FROM_EMAIL}
+To: ${email}
+Subject: Your Image
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="NextPart"
+
+--NextPart
+Content-Type: text/plain
+
+Please see the attached image. You can also view it [here](${signedUrl}).
+
+--NextPart
+Content-Type: image/png; name="image.png"
+Content-Disposition: attachment; filename="image.png"
+Content-Transfer-Encoding: base64
+Content-ID: <myimagecid>
+
+${imageBuffer.toString('base64')}
+
+--NextPart--`;
+
+    const params = {
+        RawMessage: {
+            Data: rawEmail
+        }
+    };
+
+    try {
+        await sesClient.send(new SendRawEmailCommand(params));
+        return { statusCode: 200, body: 'Email sent successfully', previewUrl: signedUrl };
+    } catch (error) {
+        console.error('Error sending email:', error);
+        return { statusCode: 500, body: 'Internal Server Error' };
+    }
+}
 const qrCodeHandeler = async (req, res) => {
     try {
         const url = req.body.url;

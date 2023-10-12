@@ -1,13 +1,16 @@
 const bcrypt = require('bcryptjs');
-const dynamoDb = require("../dbClient.js");
+const {dynamoDb} = require("../awsClients.js");
 const { QueryCommand } = require("@aws-sdk/client-dynamodb");
+const jwt = require("jsonwebtoken")
 
 const loginhandeler = async (req, res) => {
 
     const { email, password } = req.body;
-    console.log(req.event)
+    if (!email || !password){
+        res.status(404).json({message:"credential errors"})
+    }
     const params = {
-        TableName: "Users",
+        TableName: "User",
         KeyConditionExpression: "email = :emailValue",
         ExpressionAttributeValues: {
             ":emailValue": { S: email }
@@ -17,16 +20,18 @@ const loginhandeler = async (req, res) => {
     try {
         const command = new QueryCommand(params);
         const result = await dynamoDb.send(command);
-
+        console.log("checkpoint start ")
+        console.log(result,result.Items[0].email, password)
+        console.log("checkpoint end ")
         // Check if user exists
         if (result.Items && result.Items.length === 1) {
             const user = result.Items[0];
-
+            console.log(user)
             // Compare the password with the hashed password in the database
-            const isMatch = await bcrypt.compare(password, user.password);
+            const isMatch = bcrypt.compare(password, user.password.S);
             if (isMatch) {
                 // If passwords match, generate a JWT
-                const token = jwt.sign({ email: user.email }, JWT_SECRET, {
+                const token = jwt.sign({ email: user.email }, process.env.SECRET_KEY, {
                     expiresIn: '1h'
                 });
                 return res.status(200).json({ success: true, token });

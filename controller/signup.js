@@ -1,24 +1,26 @@
 const bcrypt = require('bcryptjs');
 const { PutItemCommand} = require("@aws-sdk/client-dynamodb");
-const dynamoDb= require("../dbClient.js");
-
+const {dynamoDb}= require("../awsClients.js");
+const jwt = require("jsonwebtoken")
 
 const signUpHandeler= async (req, res) => {
 
     const { username, email, password } = req.body;
-    console.log(username,email,password)
+    if (!username || !email || !password){
+        res.status(404).json({message:"credential errors"})
+    }
     // Hash the password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const params = {
-        TableName: 'Users',  
+        TableName: 'User',  
         Item: {
             email: { S: email },
             username: { S: username },
             password: { S: hashedPassword }
         },
-        ConditionExpression: 'attribute_not_exists(email)'
+       // ConditionExpression: 'attribute_not_exists(email)'
     };
     console.log(params)
     try {
