@@ -6,18 +6,18 @@ const jwtMiddleware = (req, res, next) => {
     // Extract JWT token from header
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-
+     console.log("middleware")
     if (!token) {
         return res.redirect('/signup');  // Redirect to signup page if JWT not found
     }
 
     try {
         // Decrypt or verify JWT
-        const decoded = jwt.verify(token, process.env.S);
+        const decoded = jwt.verify(token, process.env.SECRET_KEY);
         
         // Append decrypted JWT to req.body
         req.body.jwtContent = decoded;
-        console,log(req.body.jwtContent)
+        console.log(req.body.jwtContent)
         
         next();  // Continue to the next middleware or route handler
     } catch (error) {

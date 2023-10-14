@@ -3,7 +3,7 @@ const { S3Client} = require("@aws-sdk/client-s3");
 const { DynamoDBClient } = require("@aws-sdk/client-dynamodb");
 
 module.exports.sesClient= new SESClient({ 
-    region: 'us-west-2' 
+    region: 'us-east-1' 
 });  
 
 

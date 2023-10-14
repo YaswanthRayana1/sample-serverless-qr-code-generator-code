@@ -5,6 +5,7 @@ const { GetItemCommand, PutItemCommand } = require("@aws-sdk/client-dynamodb");
 const { GetObjectCommand, PutObjectCommand, GetSignedUrlCommand } = require("@aws-sdk/client-s3");
 const { Readable } = require('stream');
 const { SendRawEmailCommand } = require('@aws-sdk/client-ses');
+const { Upload } = require("@aws-sdk/lib-storage")
 
 //file imports 
 const {dynamoDb,s3Client,sesClient} = require("../awsClients.js")
@@ -29,15 +30,28 @@ const checkIfQRExists = async (email, url) => {
     return (response.Item && response.Item.url && response.Item.url.S === url) ? response.Item.Itemurl.S : null;
 };
 // upload object to an S3 bcucket 
-const uploadToS3AndGetSignedUrl = async (dataBuffer, filename) => {
-    const bucketParams = {
+const uploadToS3AndGetSignedUrl = async (dataBuffer, filename, email, url) => {
+   // console.log('Bucket Name:', Readable.from(dataBuffer));
+
+   const bucketParams = {
         Bucket: process.env.S3_BUCKET,
         Key: filename,
-        Body: Readable.from(dataBuffer),
+        Body: dataBuffer,
         ContentType: 'image/png'
     };
 
-    await s3Client.send(new PutObjectCommand(bucketParams));
+    const uploader = new Upload({
+        client: s3Client,
+        params: bucketParams
+    });
+
+    try {
+        await s3Client.send(new PutObjectCommand(bucketParams));
+     //    await uploader.done();
+    } catch (error) {
+        throw error
+    }
+
 
     const urlParams = {
         Bucket: process.env.S3_BUCKET,
@@ -54,10 +68,27 @@ const uploadToS3AndGetSignedUrl = async (dataBuffer, filename) => {
         }
     };
 
-    await ddbClient.send(new PutItemCommand(dynamoParams));
-
     return await s3Client.send(new GetSignedUrlCommand(urlParams));
 };
+const saveInDynamoDb = async (email,filename,url,signedUrl)=>{
+    const urlParams = {
+        Bucket: process.env.S3_BUCKET,
+        Key: filename,
+        Expires: 3600
+    };
+
+    const dynamoParams = {
+        TableName: "Product",
+        Item: {
+            "email": { S: email },
+            "url": { S: url },
+            "signedUrl": { S: signedUrl }
+        }
+    };
+   
+   return  await ddbClient.send(new PutItemCommand(dynamoParams));
+
+}
 const verifyAndSendEmail = async (givenEmail, imagebuffer, signedUrl) => {
     const email = givenEmail;
     const imageBuffer = imagebuffer;
@@ -101,8 +132,13 @@ ${imageBuffer.toString('base64')}
 const qrCodeHandeler = async (req, res) => {
     try {
         const url = req.body.url;
-        const email = req.body.jwtContent;
-
+        const email = req.body.jwtContent.email.S;
+       if (!url || !email){
+         res.status(400).json({
+            message:"Invalid Input"
+         })
+       }
+       console.log(1);
         const existingQRUrl = await checkIfQRExists(email, url);
         if (existingQRUrl) {
             return res.status(200).json({
@@ -110,11 +146,15 @@ const qrCodeHandeler = async (req, res) => {
                 url: existingQRUrl
             });
         }
-
+        console.log(2);
         const dataBuffer = await generateQRCode(url);
+        console.log(3);
         const filename = url.split("://")[1].replace("/", "_") + ".png";
-        const signedUrl = await uploadToS3AndGetSignedUrl(dataBuffer, filename);
-
+        console.log(4);        
+        const signedUrl = await uploadToS3AndGetSignedUrl(dataBuffer, filename, email, url);
+        console.log(signedUrl)
+        const savedTuple=await saveInDynamoDb (email,filename,url,signedUrl)
+        console.log(5);
         res.status(200).json({
             message: 'QR code generated and uploaded successfully',
             signedUrl: signedUrl
