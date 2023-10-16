@@ -50,4 +50,4 @@ jobs:
 
     - name: Redeploy API Gateway Resource
       run: |
-        aws apigateway create-deployment --rest-api-id ${{ secrets.RESOURCE_ID }} --stage-name dev --description 'Deploying latest changes'
+        aws apigateway create-deployment --rest-api-id ${{ secrets.RESOURCE_ID }} --stage-name test --description 'Deploying latest changes'
