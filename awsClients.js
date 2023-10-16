@@ -9,17 +9,18 @@ module.exports.sesClient= new SESClient({
 
 module.exports.dynamoDb = new DynamoDBClient({
     region: "us-east-1",
-    endpoint: "http://localhost:4566",
+    
+   // endpoint: "http://localhost:4566",
 });
 
 
 module.exports.s3Client = new S3Client({ 
-    endpoint: "http://localhost:4566", // Pointing to LocalStack
+   // endpoint: "http://localhost:4566", // Pointing to LocalStack
     region: "us-east-1",
-    forcePathStyle: true,
-    credentials: {
-        accessKeyId: "test", // Anything, as it's not validated
-        secretAccessKey: "test" // Anything, as it's not validated
-    },
+   // forcePathStyle: true,
+    // credentials: {
+    //     accessKeyId: "test", // Anything, as it's not validated
+    //     secretAccessKey: "test" // Anything, as it's not validated
+    // },
  }); 
 
