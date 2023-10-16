@@ -6,9 +6,18 @@ const { GetObjectCommand, PutObjectCommand, GetSignedUrlCommand } = require("@aw
 const { Readable } = require('stream');
 const { SendRawEmailCommand } = require('@aws-sdk/client-ses');
 const { Upload } = require("@aws-sdk/lib-storage")
+const{
+    getSignedUrl,
+    S3RequestPresigner,
+  } = require("@aws-sdk/s3-request-presigner");
+
+
+const hashsalt= bcrypt.genSaltSync(10)
+
 
 //file imports 
-const {dynamoDb,s3Client,sesClient} = require("../awsClients.js")
+const {dynamoDb,s3Client,sesClient} = require("../awsClients.js");
+const { log } = require('console');
 
 
 // generate QR code
@@ -17,82 +26,80 @@ const generateQRCode = async (url) => {
     const base64Data = qrCodeDataURL.replace(/^data:image\/\w+;base64,/, "");
     return Buffer.from(base64Data, 'base64');
 };
+
+
 // check if a url already exist for thee given url by the same user if so return that email iss sent
 const checkIfQRExists = async (email, url) => {
+    const hashedurl= bcrypt.hashSync(url,hashsalt)
     const params = {
         TableName: "Product",
         Key: {
-            "email": { S: email }
+            "url": { S: hashedurl }
         }
     };
-
-    const response = await dynamoDb.send(new GetItemCommand(params));
-    return (response.Item && response.Item.url && response.Item.url.S === url) ? response.Item.Itemurl.S : null;
+    try{
+        const response = await dynamoDb.send(new GetItemCommand(params));
+        console.log("file in db ");
+        return (response.Item && response.Item.url && response.Item.url.S == hashedurl) ? response.Item.signedUrl.S : null;
+    }catch(err){
+       console.log(err);
+       throw new Error(err);
+    }
 };
+
+
+
 // upload object to an S3 bcucket 
 const uploadToS3AndGetSignedUrl = async (dataBuffer, filename, email, url) => {
-   // console.log('Bucket Name:', Readable.from(dataBuffer));
 
+   
    const bucketParams = {
         Bucket: process.env.S3_BUCKET,
         Key: filename,
         Body: dataBuffer,
-        ContentType: 'image/png'
+        ContentType: 'image/png',
+        Region: 'us-east-1'
     };
-
-    const uploader = new Upload({
-        client: s3Client,
-        params: bucketParams
-    });
 
     try {
         await s3Client.send(new PutObjectCommand(bucketParams));
-     //    await uploader.done();
     } catch (error) {
-        throw error
+        throw new Error(error)
     }
-
-
     const urlParams = {
         Bucket: process.env.S3_BUCKET,
         Key: filename,
         Expires: 3600
     };
-
-    const dynamoParams = {
-        TableName: "Product",
-        Item: {
-            "email": { S: email },
-            "url": { S: url },
-            "signedUrl": { S: signedUrl }
-        }
-    };
-
-    return await s3Client.send(new GetSignedUrlCommand(urlParams));
+    const command = new GetObjectCommand({ Bucket:  process.env.S3_BUCKET, Key: filename});
+     
+    return await getSignedUrl(s3Client, command, { expiresIn: 3600 });
 };
-const saveInDynamoDb = async (email,filename,url,signedUrl)=>{
-    const urlParams = {
-        Bucket: process.env.S3_BUCKET,
-        Key: filename,
-        Expires: 3600
-    };
 
+
+
+const saveInDynamoDb = async (email,url,signedUrl)=>{
+    const hashedurl= bcrypt.hashSync(url,hashsalt); 
     const dynamoParams = {
         TableName: "Product",
         Item: {
             "email": { S: email },
-            "url": { S: url },
+            "url": { S: hashedurl },
             "signedUrl": { S: signedUrl }
         }
     };
    
-   return  await ddbClient.send(new PutItemCommand(dynamoParams));
+   return  await dynamoDb.send(new PutItemCommand(dynamoParams));
 
 }
+
+
+
+
 const verifyAndSendEmail = async (givenEmail, imagebuffer, signedUrl) => {
     const email = givenEmail;
     const imageBuffer = imagebuffer;
-
+   // console.log(email,imagebuffer,signedUrl,process.env.FROM_EMAIL);
     // Compose the raw email with the image attachment
     const rawEmail = `From: ${process.env.FROM_EMAIL}
 To: ${email}
@@ -114,7 +121,7 @@ Content-ID: <myimagecid>
 ${imageBuffer.toString('base64')}
 
 --NextPart--`;
-
+    console.log(rawEmail);
     const params = {
         RawMessage: {
             Data: rawEmail
@@ -122,6 +129,7 @@ ${imageBuffer.toString('base64')}
     };
 
     try {
+        console.log(params);
         await sesClient.send(new SendRawEmailCommand(params));
         return { statusCode: 200, body: 'Email sent successfully', previewUrl: signedUrl };
     } catch (error) {
@@ -129,6 +137,10 @@ ${imageBuffer.toString('base64')}
         return { statusCode: 500, body: 'Internal Server Error' };
     }
 }
+
+
+
+
 const qrCodeHandeler = async (req, res) => {
     try {
         const url = req.body.url;
@@ -138,7 +150,6 @@ const qrCodeHandeler = async (req, res) => {
             message:"Invalid Input"
          })
        }
-       console.log(1);
         const existingQRUrl = await checkIfQRExists(email, url);
         if (existingQRUrl) {
             return res.status(200).json({
@@ -146,15 +157,15 @@ const qrCodeHandeler = async (req, res) => {
                 url: existingQRUrl
             });
         }
-        console.log(2);
         const dataBuffer = await generateQRCode(url);
-        console.log(3);
-        const filename = url.split("://")[1].replace("/", "_") + ".png";
-        console.log(4);        
+        const filename = url.split("://")[1].replace("/", "_") + ".png";      
         const signedUrl = await uploadToS3AndGetSignedUrl(dataBuffer, filename, email, url);
-        console.log(signedUrl)
-        const savedTuple=await saveInDynamoDb (email,filename,url,signedUrl)
-        console.log(5);
+        if(signedUrl){
+          await saveInDynamoDb(email,url,signedUrl);
+          console.log("signed url- "+signedUrl)
+          let emailSentStatus=await verifyAndSendEmail(email,dataBuffer,signedUrl)
+          console.log(emailSentStatus);
+        }
         res.status(200).json({
             message: 'QR code generated and uploaded successfully',
             signedUrl: signedUrl
@@ -166,7 +177,6 @@ const qrCodeHandeler = async (req, res) => {
         });
     }
 };
-// see if something can be done of the ttl in dynamodb for 
-// the signed url as it expires after sometime resulting in stale data 
+
 
 module.exports = qrCodeHandeler

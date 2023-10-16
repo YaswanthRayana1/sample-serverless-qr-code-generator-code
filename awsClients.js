@@ -16,6 +16,7 @@ module.exports.dynamoDb = new DynamoDBClient({
 module.exports.s3Client = new S3Client({ 
     endpoint: "http://localhost:4566", // Pointing to LocalStack
     region: "us-east-1",
+    forcePathStyle: true,
     credentials: {
         accessKeyId: "test", // Anything, as it's not validated
         secretAccessKey: "test" // Anything, as it's not validated

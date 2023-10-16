@@ -13,6 +13,7 @@ router.get("/home", async (req, res) => {
 
 
 router.post("/signup", middleware.sanitizeAndVerifyEmail, controller.signup )
+router.post("/test", controller.testing )
 router.post("/login", middleware.sanitizeAndVerifyEmail, controller.login )
 router.post('/generate-qr', middleware.jwtMiddleware, controller.qrCodeHandeler);
 
