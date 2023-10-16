@@ -9,6 +9,7 @@ module.exports.sesClient= new SESClient({
 
 module.exports.dynamoDb = new DynamoDBClient({
     region: "us-east-1",
+    
    // endpoint: "http://localhost:4566",
 });
 
